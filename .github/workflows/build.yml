@@ -1,0 +1,85 @@
+name: Flutter Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Release URL'
+        required: true
+        type: string
+      tag:
+        description: 'Build Tag'
+        required: true
+        type: string
+      buildType:
+        description: 'Build Type'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download & Extract ZIP
+        run: |
+          curl -L -o project.zip "${{ inputs.url }}"
+          echo "📦 Extracting ZIP..."
+          unzip -o project.zip
+          rm project.zip
+          echo "📂 Isi folder setelah extract:"
+          ls -la
+          echo ""
+          
+          # CEK: apakah ada folder project di dalam?
+          if [ -d "project" ] && [ -f "project/pubspec.yaml" ]; then
+            echo "🔍 Detected: ZIP berisi folder project/"
+            mv project/* ./
+            rm -rf project
+            echo "✅ Semua file dipindahkan ke root"
+          elif [ -f "pubspec.yaml" ]; then
+            echo "✅ Detected: ZIP langsung berisi file project (BENAR!)"
+          else
+            # Cari folder yang mengandung pubspec.yaml
+            for dir in */; do
+              if [ -f "${dir}pubspec.yaml" ]; then
+                echo "🔍 Detected: ZIP berisi folder ${dir}"
+                mv ${dir}/* ./
+                rm -rf ${dir}
+                echo "✅ Semua file dipindahkan ke root"
+                break
+              fi
+            done
+          fi
+          
+          echo "📂 Isi folder root setelah fix:"
+          ls -la
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: |
+          if [ "${{ inputs.buildType }}" == "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: apk
+          path: build/app/outputs/flutter-apk/*.apk
